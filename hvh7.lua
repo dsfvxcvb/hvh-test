@@ -4,6 +4,7 @@ local HVH = {
     ReturnCF = nil,
 }
 print("TESTING THIS IS THE FINAL TEST")
+print("final testtttututtu")
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "HVH",

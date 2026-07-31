@@ -1,8 +1,4 @@
-local HVH = {
-    Enabled = false,
-    Running = false,
-}
-print("correct LACY HACKED OMG")
+local HVH = { Enabled = false, Running = false }
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "HVH",
@@ -50,12 +46,10 @@ task.spawn(function()
         local ret = hrp.CFrame
         local ut = koTarget.ut
 
-        -- kill the cycle loop so KnifeAttackStep stops running
-        AutoKill.CycleActive = false
-        -- wait enough frames for the while loop to actually exit
+        -- pause the autokill loop
+        AutoKill.HVHPause = true
         for _ = 1, 5 do RunService.Heartbeat:Wait() end
 
-        -- now nothing is fighting us
         pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", hrp) end)
         hum.Sit = false
         hum.PlatformStand = false
@@ -69,7 +63,8 @@ task.spawn(function()
 
         task.wait(0.2)
 
-        -- restart the cycle
+        AutoKill.HVHPause = false
+        AutoKill.CycleActive = false
         AutoKill.StartCycle()
 
         task.wait(0.5)

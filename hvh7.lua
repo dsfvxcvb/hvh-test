@@ -1,8 +1,7 @@
 local HVH = { 
     Enabled = false, 
     Running = false, 
-    OriginalTarget = nil,
-    OriginalMethod = nil
+    OriginalTarget = nil
 }
 
 CombatAutoKill:AddToggle('HVHEnabled', {
@@ -23,67 +22,104 @@ CombatAutoKill:AddToggle('HVHEnabled', {
     end
 })
 
--- Forcefully stop AutoKill by breaking its loop
+-- Directly inject a check into AutoKill's main loop
+local function InjectHVHCheck()
+    -- Get the original AutoKill loop function
+    local originalStartCycle = AutoKill.StartCycle
+    
+    -- Override StartCycle to check HVH state
+    AutoKill.StartCycle = function()
+        if AutoKill.HVHPause then
+            print("[HVH] AutoKill blocked by HVH pause")
+            return
+        end
+        originalStartCycle()
+    end
+    
+    -- Override StartCombatCycle to check HVH state
+    local originalCombatCycle = AutoKill.StartCombatCycle
+    AutoKill.StartCombatCycle = function()
+        if AutoKill.HVHPause then
+            print("[HVH] Combat cycle blocked by HVH pause")
+            return
+        end
+        originalCombatCycle()
+    end
+    
+    print("[HVH] AutoKill hooks installed")
+end
+
+InjectHVHCheck()
+
+-- Force stop function
 local function ForceStopAutoKill()
-    print("[HVH] FORCE STOPPING AutoKill...")
+    print("[HVH] 🛑 FORCE STOPPING AutoKill...")
+    
+    -- Set the pause flag
     AutoKill.HVHPause = true
     
-    -- Kill the cycle by setting it to false
-    AutoKill.CycleActive = false
+    -- Kill the active cycle
+    if AutoKill.CycleActive then
+        AutoKill.CycleActive = false
+    end
     
-    -- Stop the auto-stomp if running
+    -- Stop auto stomp
     if AutoKill.StopAutoStomp then
         AutoKill.StopAutoStomp()
     end
     
-    -- Clear the target to stop targeting
+    -- Clear target to stop any targeting
     AutoKill.Target = nil
     
-    -- Wait for the loop to exit
-    task.wait(0.2)
-    print("[HVH] AutoKill force stopped")
+    -- Wait for the loop to realize it's stopped
+    task.wait(0.3)
+    
+    print("[HVH] ✅ AutoKill stopped")
 end
 
 local function ForceResumeAutoKill()
-    print("[HVH] RESUMING AutoKill...")
+    print("[HVH] ▶️ RESUMING AutoKill...")
+    
+    -- Clear the pause
     AutoKill.HVHPause = false
     
     -- Wait a moment
     task.wait(0.1)
     
     if AutoKill.Enabled then
-        -- Find a target if we don't have one
+        -- Find a target
         if not AutoKill.Target then
             AutoKill.AdvanceTarget()
         end
         
         -- Start the cycle
         AutoKill.StartCycle()
-        print("[HVH] AutoKill resumed")
+        print("[HVH] ✅ AutoKill resumed")
     end
 end
 
--- Simplified HVH loop
+-- Main HVH loop
 task.spawn(function()
+    print("[HVH] Main loop started")
+    
     while true do
-        task.wait(0.2)
+        task.wait(0.15)
         
         -- Skip if not enabled or already running
         if not HVH.Enabled or HVH.Running then
             continue
         end
         
-        -- Skip if AutoKill isn't enabled or active
+        -- Skip if AutoKill isn't enabled or already paused
         if not AutoKill.Enabled then
             continue
         end
         
-        -- Check if AutoKill is actually running (not paused)
         if AutoKill.HVHPause then
             continue
         end
         
-        -- Get player character and health
+        -- Get player health
         local char = LocalPlayer.Character
         if not char then continue end
         
@@ -93,15 +129,15 @@ task.spawn(function()
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then continue end
         
-        -- Check health (below 70%)
+        -- Check health below 70%
         local healthPercent = (hum.Health / hum.MaxHealth) * 100
         if healthPercent > 70 then
             continue
         end
         
-        print(string.format("[HVH] ⚠️ HEALTH BELOW 70%%! (%d HP) - TRIGGERING HVH", math.floor(hum.Health)))
+        print(string.format("[HVH] ⚠️ HEALTH %d%% - TRIGGERING HVH!", math.floor(healthPercent)))
         
-        -- Find a KO'd player
+        -- Find KO'd players
         local koTargets = {}
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= LocalPlayer then
@@ -127,24 +163,21 @@ task.spawn(function()
         end
         
         if #koTargets == 0 then
-            print("[HVH] No KO'd players found")
+            print("[HVH] No KO'd players found, skipping")
             continue
         end
         
-        -- Pick random KO'd target
+        -- Pick random KO target
         local target = koTargets[math.random(1, #koTargets)]
-        print(string.format("[HVH] 🎯 Selected KO target: %s", target.player.Name))
+        print(string.format("[HVH] 🎯 KO target: %s", target.player.Name))
         
         -- Mark as running
         HVH.Running = true
         
         -- Save original target
         HVH.OriginalTarget = AutoKill.Target
-        if HVH.OriginalTarget then
-            print(string.format("[HVH] Saved original target: %s", HVH.OriginalTarget.Name))
-        end
         
-        -- ===== FORCE STOP AUTO KILL =====
+        -- ===== STOP AUTO KILL =====
         ForceStopAutoKill()
         
         -- ===== TELEPORT AND STOMP =====
@@ -153,7 +186,9 @@ task.spawn(function()
         if mainEvent and hrp and hum then
             local originalCFrame = hrp.CFrame
             
-            -- Prepare for teleport
+            print("[HVH] 📍 Teleporting to stomp position...")
+            
+            -- Reset humanoid
             hum.Sit = false
             hum.PlatformStand = false
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
@@ -164,26 +199,25 @@ task.spawn(function()
             
             -- Teleport to KO'd player
             local teleportPos = target.upperTorso.Position + Vector3.new(0, 3.5, 0)
-            print(string.format("[HVH] 📍 Teleporting to: %s", tostring(teleportPos)))
             
-            -- Force teleport
+            -- Force teleport multiple times
             hrp.CFrame = CFrame.new(teleportPos)
             task.wait(0.05)
-            
-            -- Second force teleport
+            hrp.CFrame = CFrame.new(teleportPos)
+            task.wait(0.05)
             hrp.CFrame = CFrame.new(teleportPos)
             RunService.RenderStepped:Wait()
             
             print("[HVH] 💀 Stomping...")
             
-            -- Stomp 5 times with delay
-            for i = 1, 5 do
+            -- Stomp 6 times
+            for i = 1, 6 do
                 mainEvent:FireServer("Stomp")
-                print(string.format("[HVH] Stomp %d/5", i))
-                task.wait(0.1)
+                print(string.format("[HVH] Stomp %d/6", i))
+                task.wait(0.08)
             end
             
-            print("[HVH] ✅ Stomped!")
+            print("[HVH] ✅ Stomped! Returning...")
             
             -- Return to original position
             hrp.CFrame = originalCFrame
@@ -192,12 +226,10 @@ task.spawn(function()
             
             task.wait(0.2)
         else
-            print("[HVH] ❌ Failed: Missing MainEvent or character parts")
+            print("[HVH] ❌ Failed to stomp!")
         end
         
         -- ===== RESUME AUTO KILL =====
-        print("[HVH] Resuming AutoKill...")
-        
         -- Restore original target
         if HVH.OriginalTarget then
             local target = HVH.OriginalTarget
@@ -234,4 +266,5 @@ task.spawn(function()
     end
 end)
 
-print("[HVH] ✅ Loaded - Will stomp KO'd players when health drops below 70%")
+print("[HVH] ✅ Loaded - Will stop AutoKill and stomp when health < 70%")
+print("past 12 bruh")

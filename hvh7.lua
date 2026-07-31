@@ -22,10 +22,13 @@ task.spawn(function()
     while true do
         task.wait(0.1)
         
-        -- Debug: print state occasionally
+        -- Debug: print state occasionally (FIXED: convert booleans to strings)
         if tick() % 5 < 0.1 then
             print(string.format("[HVH] State - Enabled: %s, Running: %s, AutoKill Enabled: %s, CycleActive: %s", 
-                HVH.Enabled, HVH.Running, AutoKill.Enabled, AutoKill.CycleActive))
+                tostring(HVH.Enabled), 
+                tostring(HVH.Running), 
+                tostring(AutoKill.Enabled), 
+                tostring(AutoKill.CycleActive)))
         end
         
         if not HVH.Enabled then 
@@ -138,7 +141,7 @@ task.spawn(function()
         -- Teleport and stomp with retry
         local stompSuccess = false
         for attempt = 1, 3 do
-            pcall(function()
+            local success, err = pcall(function()
                 -- Reset humanoid state
                 hum.Sit = false
                 hum.PlatformStand = false
@@ -175,6 +178,10 @@ task.spawn(function()
                 stompSuccess = true
                 print("[HVH] ✅ Stomp completed!")
             end)
+            
+            if not success then
+                print(string.format("[HVH] ⚠️ Stomp attempt %d failed: %s", attempt, tostring(err)))
+            end
             
             if stompSuccess then break end
             print(string.format("[HVH] ⚠️ Stomp attempt %d failed, retrying...", attempt))
@@ -239,4 +246,3 @@ task.spawn(function()
 end)
 
 print("[HVH] ✅ HVH feature loaded - Check console for debug output")
-print("trevor larp")

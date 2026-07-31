@@ -2,7 +2,7 @@ local HVH = {
     Enabled = false,
     Running = false,
 }
-print("holy code")
+print("correct LACY HACKED OMG")
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "HVH",
@@ -49,39 +49,28 @@ task.spawn(function()
 
         local ret = hrp.CFrame
         local ut = koTarget.ut
-        local targetHRP = koTarget.player.Character and koTarget.player.Character:FindFirstChild("HumanoidRootPart")
 
-        -- reset physics rep AND re-own both parts so AutoKill can't re-glue us
-        pcall(function()
-            sethiddenproperty(hrp, "PhysicsRepRootPart", hrp)
-            if targetHRP then hrp:SetNetworkOwner(LocalPlayer) end
-        end)
+        -- kill the cycle loop so KnifeAttackStep stops running
+        AutoKill.CycleActive = false
+        -- wait enough frames for the while loop to actually exit
+        for _ = 1, 5 do RunService.Heartbeat:Wait() end
 
+        -- now nothing is fighting us
+        pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", hrp) end)
         hum.Sit = false
         hum.PlatformStand = false
         hum:ChangeState(Enum.HumanoidStateType.GettingUp)
         hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-
-        -- hold position for 10 frames fighting off AutoKill's re-glue each frame
-        local stompPos = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
-        for _ = 1, 10 do
-            pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", hrp) end)
-            hrp.CFrame = stompPos
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            RunService.RenderStepped:Wait()
-            -- update stomp pos in case target moved
-            if ut and ut.Parent then
-                stompPos = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
-            end
-        end
-
+        hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
+        RunService.RenderStepped:Wait()
         for _ = 1, 5 do me:FireServer("Stomp") end
-
-        -- return home fighting re-glue
-        pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", hrp) end)
         hrp.CFrame = ret
         hrp.AssemblyLinearVelocity = Vector3.zero
+
+        task.wait(0.2)
+
+        -- restart the cycle
+        AutoKill.StartCycle()
 
         task.wait(0.5)
         HVH.Running = false

@@ -8,6 +8,7 @@ CombatAutoKill:AddToggle('HVHEnabled', {
         if not Value then HVH.Running = false end
     end
 })
+print("not a nigger")
 
 task.spawn(function()
     while true do

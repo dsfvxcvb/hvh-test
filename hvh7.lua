@@ -2,6 +2,7 @@ local HVH = {
     Enabled = false,
     Running = false,
 }
+print("LOAD HOLY FUCK")
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "HVH",

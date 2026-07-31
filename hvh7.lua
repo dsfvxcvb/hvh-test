@@ -4,6 +4,7 @@ local HVH = {
     OriginalTarget = nil,
     Cooldown = 0
 }
+print("1:09 am")
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "HVH",

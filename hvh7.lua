@@ -43,53 +43,43 @@ local function GetKOTarget()
     return nil
 end
 
--- Stomp function with locking
+-- Stomp function that disables all auto-stomp interference
 local function StompTarget(hrp, hum, target, mainevent)
+    if not target or not target.Character then return 0 end
+    
     local targetChar = target.Character
-    if not targetChar then return end
-    
     local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return end
+    if not targetHRP then return 0 end
     
-    -- Save original position
+    -- SAVE ORIGINAL POSITION
     local originalCF = hrp.CFrame
     
-    -- Lock character position to target
-    local lockConnection = nil
+    -- TEMPORARILY KILL AUTO-STOMP STATE
+    local autoStompState = getgenv().AutoStompState
+    local wasAutostompRunning = false
+    
+    if autoStompState then
+        wasAutostompRunning = autoStompState.autostomp
+        autoStompState.autostomp = false
+        autoStompState.running = false
+        autoStompState.ret = nil
+    end
+    
+    -- Also stop AutoKill's stomp if running
+    if AutoKill.StopAutoStomp then
+        AutoKill.StopAutoStomp()
+    end
+    AutoKill.GunMethod.StompRunning = false
+    
+    print("[HVH] Starting stomp on: " .. target.Name)
+    
     local stompCount = 0
-    local maxStomps = 8
+    local maxAttempts = 15
     
-    -- Create a connection to constantly update position
-    lockConnection = RunService.RenderStepped:Connect(function()
+    for attempt = 1, maxAttempts do
+        -- Check if target is still KO'd
         if not targetChar or not targetChar.Parent then
-            return
-        end
-        
-        local koBody = targetChar:FindFirstChild("BodyEffects")
-        if koBody then
-            local ko = koBody:FindFirstChild("K.O")
-            local dead = koBody:FindFirstChild("Dead")
-            -- If no longer KO'd or dead, stop
-            if not ko or not ko.Value or (dead and dead.Value) then
-                return
-            end
-        end
-        
-        -- Get the UpperTorso for stomp position
-        local ut = targetChar:FindFirstChild("UpperTorso")
-        if ut then
-            -- Lock position above the target
-            local targetPos = ut.Position + Vector3.new(0, 3.5, 0)
-            hrp.CFrame = CFrame.new(targetPos)
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-        end
-    end)
-    
-    -- Stomp rapidly while locked
-    for i = 1, maxStomps do
-        -- Check if target still exists and is KO'd
-        if not targetChar or not targetChar.Parent then
+            print("[HVH] Target lost")
             break
         end
         
@@ -98,33 +88,63 @@ local function StompTarget(hrp, hum, target, mainevent)
             local ko = koBody:FindFirstChild("K.O")
             local dead = koBody:FindFirstChild("Dead")
             if not ko or not ko.Value or (dead and dead.Value) then
+                print("[HVH] Target no longer KO'd or dead")
                 break
             end
         end
         
-        -- Reset humanoid state
+        -- Get UpperTorso position
+        local ut = targetChar:FindFirstChild("UpperTorso")
+        if not ut then
+            print("[HVH] No UpperTorso found")
+            break
+        end
+        
+        -- Reset humanoid (prevents ragdoll interference)
         hum.Sit = false
         hum.PlatformStand = false
         hum:ChangeState(Enum.HumanoidStateType.GettingUp)
         
+        -- Clear velocity
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        
+        -- Teleport above target
+        local stompPos = ut.Position + Vector3.new(0, 3.5, 0)
+        hrp.CFrame = CFrame.new(stompPos)
+        
+        -- Wait for teleport to register
+        task.wait(0.03)
+        RunService.RenderStepped:Wait()
+        
         -- Fire stomp multiple times rapidly
-        for j = 1, 3 do
+        for i = 1, 5 do
             mainevent:FireServer("Stomp")
+            task.wait(0.02)
         end
         
-        stompCount = stompCount + 1
-        task.wait(0.05) -- Very fast stomp cycle
+        stompCount = stompCount + 5
+        
+        -- Small delay before next attempt
+        task.wait(0.05)
     end
     
-    -- Disconnect the lock
-    if lockConnection then
-        lockConnection:Disconnect()
-    end
+    print("[HVH] Stomped " .. stompCount .. " times")
     
     -- Return to original position
     hrp.CFrame = originalCF
     hrp.AssemblyLinearVelocity = Vector3.zero
     hrp.AssemblyAngularVelocity = Vector3.zero
+    
+    -- Restore auto-stomp state
+    if autoStompState then
+        autoStompState.autostomp = wasAutostompRunning
+        if wasAutostompRunning then
+            task.spawn(function()
+                getgenv().AutoStompLoop()
+            end)
+        end
+    end
     
     return stompCount
 end
@@ -164,25 +184,60 @@ task.spawn(function()
         HVH.Running = true
         HVH.OriginalTarget = AutoKill.Target
         
-        -- ===== STOP AUTO KILL =====
+        -- ===== STOP AUTO KILL COMPLETELY =====
+        print("[HVH] Stopping AutoKill...")
         AutoKill.Enabled = false
         if AutoKill.CycleActive then
             AutoKill.CycleActive = false
         end
         AutoKill.Target = nil
-        task.wait(0.15)
         
-        -- ===== FAST STOMP =====
+        -- Disable auto-stomp states
+        if AutoKill.StopAutoStomp then
+            AutoKill.StopAutoStomp()
+        end
+        AutoKill.GunMethod.StompRunning = false
+        
+        if getgenv().AutoStompState then
+            getgenv().AutoStompState.autostomp = false
+            getgenv().AutoStompState.running = false
+            getgenv().AutoStompState.ret = nil
+        end
+        
+        task.wait(0.2)
+        
+        -- ===== PERFORM STOMP =====
         local stompCount = StompTarget(hrp, hum, koTarget, mainevent)
-        print(string.format("[HVH] Stomped %d times", stompCount or 0))
+        
+        if stompCount == 0 then
+            print("[HVH] WARNING: No stomps performed!")
+            -- Try one more time with direct approach
+            local ut = koTarget.Character and koTarget.Character:FindFirstChild("UpperTorso")
+            if ut then
+                print("[HVH] Emergency stomp attempt...")
+                hum.Sit = false
+                hum.PlatformStand = false
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
+                task.wait(0.1)
+                for i = 1, 10 do
+                    mainevent:FireServer("Stomp")
+                    task.wait(0.03)
+                end
+                hrp.CFrame = originalPos or hrp.CFrame
+            end
+        end
         
         -- ===== RESUME AUTO KILL =====
+        print("[HVH] Resuming AutoKill...")
+        
         if HVH.OriginalTarget then
             local target = HVH.OriginalTarget
             if target and target.Character then
                 local targetHum = target.Character:FindFirstChildOfClass("Humanoid")
                 if targetHum and targetHum.Health > 0 then
                     AutoKill.Target = target
+                    print(string.format("[HVH] Restored target: %s", target.Name))
                 else
                     AutoKill.Target = nil
                     AutoKill.AdvanceTarget()
@@ -206,7 +261,9 @@ task.spawn(function()
         HVH.OriginalTarget = nil
         task.wait(0.3)
         HVH.Running = false
+        
+        print("[HVH] HVH cycle complete")
     end
 end)
 
-print("[HVH] Loaded - Fast stomping with position lock")
+print("[HVH] Loaded - Fixed auto-stomp interference")

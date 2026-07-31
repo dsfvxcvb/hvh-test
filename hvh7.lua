@@ -1,92 +1,98 @@
 local HVH = {
     Enabled = false,
     Running = false,
+    ReturnCF = nil,
 }
-print("LOAD HOLY FUCK")
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "HVH",
     Default = false,
     Callback = function(Value)
         HVH.Enabled = Value
-        if not Value then HVH.Running = false end
+        if not Value then
+            HVH.Running = false
+            HVH.ReturnCF = nil
+        end
     end
 })
 
-RunService.Heartbeat:Connect(function()
-    if not HVH.Enabled then return end
-    if HVH.Running then return end
-    if not AutoKill.Enabled then return end
-    if AutoKill.GunMethod.StompRunning then return end
+task.spawn(function()
+    while true do
+        task.wait()
+        if not HVH.Enabled or HVH.Running then continue end
+        if not AutoKill.Enabled then continue end
 
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then return end
-    if (hum.Health / hum.MaxHealth) * 100 > 70 then return end
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not char or not hrp or not hum then continue end
+        if hum.Health <= 0 then continue end
+        if (hum.Health / hum.MaxHealth) * 100 > 70 then continue end
 
-    local koTarget = nil
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            local tc = p.Character
-            if tc then
-                local b = tc:FindFirstChild("BodyEffects")
-                local ko = b and b:FindFirstChild("K.O") and b["K.O"].Value
-                local dead = b and b:FindFirstChild("Dead") and b["Dead"].Value
-                if ko and not dead and tc:FindFirstChild("UpperTorso") then
-                    koTarget = p
-                    break
+        -- find KO'd target
+        local koTarget = nil
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local tc = p.Character
+                if tc then
+                    local b = tc:FindFirstChild("BodyEffects")
+                    local ko = b and b:FindFirstChild("K.O")
+                    local dead = b and b:FindFirstChild("Dead")
+                    if ko and ko.Value and dead and not dead.Value then
+                        local ut = tc:FindFirstChild("UpperTorso")
+                        if ut then
+                            koTarget = {player = p, ut = ut}
+                            break
+                        end
+                    end
                 end
             end
         end
-    end
 
-    if not koTarget then return end
+        if not koTarget then continue end
 
-    HVH.Running = true
-
-    task.spawn(function()
-        local me = ReplicatedStorage:FindFirstChild("MainEvent")
-        local c = LocalPlayer.Character
-        local hrp = c and c:FindFirstChild("HumanoidRootPart")
-        local hum2 = c and c:FindFirstChildOfClass("Humanoid")
-        if not hrp or not hum2 or not me then
-            HVH.Running = false
-            return
-        end
-
-        local ut = koTarget.Character and koTarget.Character:FindFirstChild("UpperTorso")
-        if not ut then
-            HVH.Running = false
-            return
-        end
-
-        -- kill the cycle by disabling autokill entirely so the loop exits
-        local savedTarget = AutoKill.Target
+        HVH.Running = true
         AutoKill.Enabled = false
         AutoKill.CycleActive = false
-        -- wait enough frames for the running task.spawn loop to see Enabled=false and stop
-        task.wait(0.15)
+        task.wait(0.1)
 
-        local ret = hrp.CFrame
+        local me = ReplicatedStorage:FindFirstChild("MainEvent")
+        if not me then
+            AutoKill.Enabled = true
+            AutoKill.StartCycle()
+            HVH.Running = false
+            continue
+        end
 
-        hum2.Sit = false
-        hum2.PlatformStand = false
-        hum2:ChangeState(Enum.HumanoidStateType.GettingUp)
-        hrp.Velocity = Vector3.new()
-        hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
-        RunService.RenderStepped:Wait()
-        for _ = 1, 5 do task.spawn(function() me:FireServer("Stomp") end) end
-        hrp.CFrame = ret
-        me:FireServer("Stomp")
+        if not HVH.ReturnCF then HVH.ReturnCF = hrp.CFrame end
 
-        task.wait(0.2)
+        -- exact working stomp pattern
+        local ut = koTarget.ut
+        if ut and ut.Parent then
+            hum.Sit = false
+            hum.PlatformStand = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            hrp.Velocity = Vector3.zero
+            hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
+            RunService.RenderStepped:Wait()
+            for _ = 1, 5 do me:FireServer("Stomp") end
+            hrp.CFrame = HVH.ReturnCF
+        end
 
-        -- restore and restart
-        AutoKill.Target = savedTarget
-        AutoKill.Enabled = true
-        AutoKill.StartCycle()
+        task.wait()
 
-        task.wait(0.5)
+        -- check if still KO'd, if not then done
+        local tc = koTarget.player.Character
+        local b = tc and tc:FindFirstChild("BodyEffects")
+        local ko = b and b:FindFirstChild("K.O")
+        if not ko or not ko.Value then
+            HVH.ReturnCF = nil
+            HVH.Running = false
+            AutoKill.Enabled = true
+            AutoKill.StartCycle()
+        end
+        -- if still KO'd, loop will run again next tick automatically
+        -- since HVH.Running is still true it won't double-trigger
         HVH.Running = false
-    end)
+    end
 end)

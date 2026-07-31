@@ -44,29 +44,30 @@ RunService.Heartbeat:Connect(function()
     HVH.Running = true
 
     task.spawn(function()
-        -- stop the autokill cycle so it stops teleporting us
-        AutoKill.StopCycle()
-        task.wait(0.1)
-
         local me = ReplicatedStorage:FindFirstChild("MainEvent")
         local c = LocalPlayer.Character
         local hrp = c and c:FindFirstChild("HumanoidRootPart")
         local hum2 = c and c:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum2 or not me then
-            AutoKill.StartCycle()
             HVH.Running = false
             return
         end
 
-        local ret = hrp.CFrame
         local ut = koTarget.Character and koTarget.Character:FindFirstChild("UpperTorso")
         if not ut then
-            AutoKill.StartCycle()
             HVH.Running = false
             return
         end
 
-        -- exact working stomp pattern
+        -- kill the cycle by disabling autokill entirely so the loop exits
+        local savedTarget = AutoKill.Target
+        AutoKill.Enabled = false
+        AutoKill.CycleActive = false
+        -- wait enough frames for the running task.spawn loop to see Enabled=false and stop
+        task.wait(0.15)
+
+        local ret = hrp.CFrame
+
         hum2.Sit = false
         hum2.PlatformStand = false
         hum2:ChangeState(Enum.HumanoidStateType.GettingUp)
@@ -75,17 +76,15 @@ RunService.Heartbeat:Connect(function()
         RunService.RenderStepped:Wait()
         for _ = 1, 5 do task.spawn(function() me:FireServer("Stomp") end) end
         hrp.CFrame = ret
-
-        -- wait for stomp to land then go back
-        while hrp and (hrp.Position - ret.Position).Magnitude > 5 do
-            hrp.CFrame = ret
-            task.wait()
-        end
         me:FireServer("Stomp")
-        task.wait(0.3)
 
-        -- resume autokill on original target
+        task.wait(0.2)
+
+        -- restore and restart
+        AutoKill.Target = savedTarget
+        AutoKill.Enabled = true
         AutoKill.StartCycle()
+
         task.wait(0.5)
         HVH.Running = false
     end)

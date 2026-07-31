@@ -15,6 +15,7 @@ CombatAutoKill:AddToggle('HVHEnabled', {
         end
     end
 })
+print("niccer test")
 
 -- Main HVH loop with debug
 task.spawn(function()

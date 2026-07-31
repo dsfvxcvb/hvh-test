@@ -1,20 +1,20 @@
 local HVH = {
     Enabled = false,
     Running = false,
-    ReturnCF = nil,
 }
-print("TESTING THIS IS THE FINAL TEST")
-print("final testtttututtu")
+print("pls workk")
+print("d")
+print("d")
+print("a")
+print("dfd")
+print("fvb")
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "HVH",
     Default = false,
     Callback = function(Value)
         HVH.Enabled = Value
-        if not Value then
-            HVH.Running = false
-            HVH.ReturnCF = nil
-        end
+        if not Value then HVH.Running = false end
     end
 })
 
@@ -31,7 +31,6 @@ task.spawn(function()
         if hum.Health <= 0 then continue end
         if (hum.Health / hum.MaxHealth) * 100 > 70 then continue end
 
-        -- find KO'd target
         local koTarget = nil
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer then
@@ -54,21 +53,15 @@ task.spawn(function()
         if not koTarget then continue end
 
         HVH.Running = true
-        AutoKill.Enabled = false
-        AutoKill.CycleActive = false
-        task.wait(0.1)
 
         local me = ReplicatedStorage:FindFirstChild("MainEvent")
-        if not me then
-            AutoKill.Enabled = true
-            AutoKill.StartCycle()
-            HVH.Running = false
-            continue
-        end
+        if not me then HVH.Running = false continue end
 
-        if not HVH.ReturnCF then HVH.ReturnCF = hrp.CFrame end
+        local ret = hrp.CFrame
 
-        -- exact working stomp pattern
+        -- unglue physics rep so AutoKill's sethiddenproperty doesn't fight us
+        pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", hrp) end)
+
         local ut = koTarget.ut
         if ut and ut.Parent then
             hum.Sit = false
@@ -78,23 +71,11 @@ task.spawn(function()
             hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
             RunService.RenderStepped:Wait()
             for _ = 1, 5 do me:FireServer("Stomp") end
-            hrp.CFrame = HVH.ReturnCF
+            hrp.CFrame = ret
+            hrp.Velocity = Vector3.zero
         end
 
-        task.wait()
-
-        -- check if still KO'd, if not then done
-        local tc = koTarget.player.Character
-        local b = tc and tc:FindFirstChild("BodyEffects")
-        local ko = b and b:FindFirstChild("K.O")
-        if not ko or not ko.Value then
-            HVH.ReturnCF = nil
-            HVH.Running = false
-            AutoKill.Enabled = true
-            AutoKill.StartCycle()
-        end
-        -- if still KO'd, loop will run again next tick automatically
-        -- since HVH.Running is still true it won't double-trigger
+        task.wait(0.5)
         HVH.Running = false
     end
 end)

@@ -1,4 +1,9 @@
-local HVH = { Enabled = false, Running = false, OriginalTarget = nil }
+local HVH = { 
+    Enabled = false, 
+    Running = false, 
+    OriginalTarget = nil,
+    OriginalMethod = nil
+}
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "HVH",
@@ -8,82 +13,67 @@ CombatAutoKill:AddToggle('HVHEnabled', {
         if not Value then 
             HVH.Running = false
             HVH.OriginalTarget = nil
-            if AutoKill.Enabled and AutoKill.HVHPause then
+            if AutoKill.HVHPause then
                 AutoKill.HVHPause = false
-                AutoKill.StartCycle()
+                if AutoKill.Enabled then
+                    AutoKill.StartCycle()
+                end
             end
         end
     end
 })
-print("niccer test")
 
--- Main HVH loop with debug
+-- Simplified HVH loop
 task.spawn(function()
-    print("[HVH] HVH loop started")
     while true do
-        task.wait(0.1)
+        task.wait(0.2) -- Check every 0.2 seconds
         
-        -- Debug: print state occasionally (FIXED: convert booleans to strings)
-        if tick() % 5 < 0.1 then
-            print(string.format("[HVH] State - Enabled: %s, Running: %s, AutoKill Enabled: %s, CycleActive: %s", 
-                tostring(HVH.Enabled), 
-                tostring(HVH.Running), 
-                tostring(AutoKill.Enabled), 
-                tostring(AutoKill.CycleActive)))
+        -- Skip if not enabled or already running
+        if not HVH.Enabled or HVH.Running then
+            continue
         end
         
-        if not HVH.Enabled then 
-            continue 
+        -- Skip if AutoKill isn't active
+        if not AutoKill.Enabled then
+            continue
         end
         
-        if HVH.Running then 
-            continue 
-        end
-        
-        if not AutoKill.Enabled then 
-            continue 
-        end
-        
-        if not AutoKill.CycleActive then 
-            continue 
-        end
-        
+        -- Get player character and health
         local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not char then continue end
         
-        if not char or not hrp or not hum then 
-            continue 
-        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then continue end
         
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+        
+        -- Check health (below 70%)
         local healthPercent = (hum.Health / hum.MaxHealth) * 100
-        local currentHP = math.floor(hum.Health)
-        
-        -- Debug: print health when checking
-        if healthPercent <= 75 then
-            print(string.format("[HVH] Health check: %d HP (%.1f%%) - Threshold: 70%%", currentHP, healthPercent))
+        if healthPercent > 70 then
+            continue
         end
         
-        if healthPercent > 70 then 
-            continue 
-        end
+        print(string.format("[HVH] Health below 70%%! (%d HP)", math.floor(hum.Health)))
         
-        print(string.format("[HVH] ⚠️ HEALTH BELOW 70%%! Current HP: %d", currentHP))
-        
-        -- Find KO'd person
+        -- Find a KO'd player
         local koTargets = {}
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                local tc = p.Character
-                if tc then
-                    local b = tc:FindFirstChild("BodyEffects")
-                    if b then
-                        local ko = b:FindFirstChild("K.O")
-                        local dead = b:FindFirstChild("Dead")
-                        if ko and ko.Value and (not dead or not dead.Value) then
-                            local ut = tc:FindFirstChild("UpperTorso")
-                            if ut then 
-                                table.insert(koTargets, {player = p, ut = ut, char = tc, name = p.Name})
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local pChar = player.Character
+                if pChar then
+                    local bodyEffects = pChar:FindFirstChild("BodyEffects")
+                    if bodyEffects then
+                        local ko = bodyEffects:FindFirstChild("K.O")
+                        local dead = bodyEffects:FindFirstChild("Dead")
+                        if ko and ko.Value == true and (not dead or dead.Value == false) then
+                            local upperTorso = pChar:FindFirstChild("UpperTorso")
+                            if upperTorso then
+                                table.insert(koTargets, {
+                                    player = player,
+                                    upperTorso = upperTorso,
+                                    character = pChar
+                                })
                             end
                         end
                     end
@@ -91,59 +81,45 @@ task.spawn(function()
             end
         end
         
-        print(string.format("[HVH] Found %d KO'd players", #koTargets))
-        
-        if #koTargets == 0 then 
-            print("[HVH] No KO'd players found, skipping")
-            continue 
+        if #koTargets == 0 then
+            continue
         end
         
         -- Pick random KO'd target
-        local koTarget = koTargets[math.random(1, #koTargets)]
-        if not koTarget then 
-            continue 
-        end
+        local target = koTargets[math.random(1, #koTargets)]
+        print(string.format("[HVH] Found KO target: %s", target.player.Name))
         
-        print(string.format("[HVH] 🎯 Selected KO target: %s", koTarget.name))
-        
-        -- Mark HVH as running
+        -- Mark as running
         HVH.Running = true
         
-        -- Save current target
-        if AutoKill.Target then
-            HVH.OriginalTarget = AutoKill.Target
+        -- Save original target
+        HVH.OriginalTarget = AutoKill.Target
+        if HVH.OriginalTarget then
             print(string.format("[HVH] Saved original target: %s", HVH.OriginalTarget.Name))
         end
         
-        -- Get MainEvent
-        local me = ReplicatedStorage:FindFirstChild("MainEvent")
-        if not me then 
-            print("[HVH] ❌ MainEvent not found!")
-            HVH.Running = false 
-            continue 
-        end
-        
-        -- Stop AutoKill
+        -- ===== STOP AUTO KILL =====
         print("[HVH] Stopping AutoKill...")
         AutoKill.HVHPause = true
+        
+        -- Force stop the cycle
         if AutoKill.CycleActive then
             AutoKill.StopCycle()
         end
         
-        task.wait(0.2)
+        -- Wait for it to fully stop
+        task.wait(0.15)
         
-        -- Save current position
-        local ret = hrp.CFrame
-        local ut = koTarget.ut
-        local stompPosition = ut.Position + Vector3.new(0, 3.5, 0)
+        -- ===== TELEPORT AND STOMP =====
+        local success = false
+        local mainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
         
-        print(string.format("[HVH] 📍 Teleporting to stomp position: %s", tostring(stompPosition)))
-        
-        -- Teleport and stomp with retry
-        local stompSuccess = false
-        for attempt = 1, 3 do
-            local success, err = pcall(function()
-                -- Reset humanoid state
+        if mainEvent then
+            pcall(function()
+                -- Save position
+                local originalCFrame = hrp.CFrame
+                
+                -- Prepare for teleport
                 hum.Sit = false
                 hum.PlatformStand = false
                 hum:ChangeState(Enum.HumanoidStateType.GettingUp)
@@ -152,98 +128,85 @@ task.spawn(function()
                 hrp.AssemblyLinearVelocity = Vector3.zero
                 hrp.AssemblyAngularVelocity = Vector3.zero
                 
-                -- Set network ownership
-                pcall(function()
-                    hrp:SetNetworkOwner(LocalPlayer)
-                end)
+                -- Teleport to KO'd player
+                local teleportPos = target.upperTorso.Position + Vector3.new(0, 3.5, 0)
+                hrp.CFrame = CFrame.new(teleportPos)
                 
-                -- Teleport
-                hrp.CFrame = CFrame.new(stompPosition)
-                
-                -- Force position update
+                -- Wait for teleport
                 task.wait(0.05)
-                hrp.CFrame = CFrame.new(stompPosition)
                 
-                -- Wait for teleport to register
+                -- Force position again
+                hrp.CFrame = CFrame.new(teleportPos)
                 RunService.RenderStepped:Wait()
-                task.wait(0.05)
                 
-                print(string.format("[HVH] Attempt %d: Stomping %s", attempt, koTarget.name))
+                print("[HVH] Teleported, stomping...")
                 
-                -- Stomp multiple times
+                -- Stomp 5 times
                 for i = 1, 5 do
-                    me:FireServer("Stomp")
-                    task.wait(0.08)
+                    mainEvent:FireServer("Stomp")
+                    task.wait(0.05)
                 end
                 
-                stompSuccess = true
-                print("[HVH] ✅ Stomp completed!")
+                print("[HVH] Stomped!")
+                
+                -- Return to original position
+                hrp.CFrame = originalCFrame
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                
+                success = true
             end)
-            
-            if not success then
-                print(string.format("[HVH] ⚠️ Stomp attempt %d failed: %s", attempt, tostring(err)))
-            end
-            
-            if stompSuccess then break end
-            print(string.format("[HVH] ⚠️ Stomp attempt %d failed, retrying...", attempt))
-            task.wait(0.1)
+        else
+            print("[HVH] MainEvent not found!")
         end
         
-        if not stompSuccess then
-            print("[HVH] ❌ All stomp attempts failed!")
+        if not success then
+            print("[HVH] Failed to stomp!")
         end
-        
-        -- Return to original position
-        print("[HVH] 📍 Returning to original position")
-        pcall(function()
-            hrp.CFrame = ret
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-        end)
         
         task.wait(0.2)
         
-        -- Resume AutoKill
+        -- ===== RESUME AUTO KILL =====
         print("[HVH] Resuming AutoKill...")
         AutoKill.HVHPause = false
         
-        -- Restore original target
+        -- Restore original target if still alive
         if HVH.OriginalTarget then
             local target = HVH.OriginalTarget
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                local humTarget = target.Character:FindFirstChildOfClass("Humanoid")
-                if humTarget and humTarget.Health > 0 then
+            if target and target.Character then
+                local targetHum = target.Character:FindFirstChildOfClass("Humanoid")
+                if targetHum and targetHum.Health > 0 then
                     AutoKill.Target = target
-                    print(string.format("[HVH] Restored original target: %s", target.Name))
+                    print(string.format("[HVH] Restored target: %s", target.Name))
                 else
-                    print("[HVH] Original target is dead, finding new target")
+                    print("[HVH] Original target dead, finding new")
                     AutoKill.Target = nil
                     AutoKill.AdvanceTarget()
                 end
             else
-                print("[HVH] Original target invalid, finding new target")
+                print("[HVH] Original target invalid, finding new")
                 AutoKill.Target = nil
                 AutoKill.AdvanceTarget()
             end
         else
-            print("[HVH] No original target, finding new target")
+            print("[HVH] No original target, finding new")
             AutoKill.Target = nil
             AutoKill.AdvanceTarget()
         end
         
         -- Restart AutoKill
         if AutoKill.Enabled then
-            print("[HVH] Restarting AutoKill cycle")
             AutoKill.StartCycle()
         end
         
+        -- Reset
         HVH.OriginalTarget = nil
-        
-        -- Cooldown
         task.wait(0.5)
         HVH.Running = false
-        print("[HVH] HVH cycle complete, ready for next trigger")
+        
+        print("[HVH] HVH cycle complete")
     end
 end)
 
-print("[HVH] ✅ HVH feature loaded - Check console for debug output")
+print("[HVH] Loaded - Will stomp KO'd players when health drops below 70%")
+print("deepseek")

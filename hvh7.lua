@@ -141,9 +141,9 @@ local function DoStompWithRetry(hrp, hum, target, maxRetries)
         end
 
         -- Hard re-confirm position every attempt
-        local confirmCF = GetStompCFrame()
-        if confirmCF then
-            hrp.CFrame = confirmCF
+        local currentHRP = targetChar:FindFirstChild("HumanoidRootPart")
+        if currentHRP then
+            hrp.CFrame = currentHRP.CFrame
             hrp.AssemblyLinearVelocity = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
         end
@@ -308,4 +308,4 @@ task.spawn(function()
 end)
 
 print("[HVH] Loaded - Health < 50%, stomps KO targets to recover")
-print("hypergamy")
+print("autism")

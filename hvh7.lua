@@ -3,7 +3,6 @@ local HVH = {
     Running = false,
     OriginalTarget = nil,
     Cooldown = 0,
-    StompAttempts = 0
 }
 
 CombatAutoKill:AddToggle('HVHEnabled', {
@@ -14,31 +13,9 @@ CombatAutoKill:AddToggle('HVHEnabled', {
         if not Value then 
             HVH.Running = false
             HVH.OriginalTarget = nil
-            HVH.StompAttempts = 0
         end
     end
 })
-
-local mainevent = ReplicatedStorage:WaitForChild("MainEvent")
-
-local function GetKOTarget()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            local c = p.Character
-            if c then
-                local b = c:FindFirstChild("BodyEffects")
-                if b then
-                    local ko = b:FindFirstChild("K.O")
-                    local dead = b:FindFirstChild("Dead")
-                    if ko and ko.Value and dead and not dead.Value then
-                        return p
-                    end
-                end
-            end
-        end
-    end
-    return nil
-end
 
 local function GetAllKOTargets()
     local targets = {}
@@ -51,10 +28,7 @@ local function GetAllKOTargets()
                     local ko = b:FindFirstChild("K.O")
                     local dead = b:FindFirstChild("Dead")
                     if ko and ko.Value and dead and not dead.Value then
-                        table.insert(targets, {
-                            player = p,
-                            character = c,
-                        })
+                        table.insert(targets, p)
                     end
                 end
             end
@@ -63,130 +37,15 @@ local function GetAllKOTargets()
     return targets
 end
 
-local function StompLanded(targetChar)
-    if not targetChar or not targetChar.Parent then return true end
-    local be = targetChar:FindFirstChild("BodyEffects")
-    if not be then return true end
-    local dead = be:FindFirstChild("Dead")
-    local ko = be:FindFirstChild("K.O")
-    if dead and dead.Value then return true end
-    if ko and not ko.Value then return true end
-    return false
-end
-
-local function IsStillKOd(targetChar)
-    if not targetChar or not targetChar.Parent then return false end
-    local be = targetChar:FindFirstChild("BodyEffects")
+local function IsStillKOd(player)
+    if not player or not player.Character then return false end
+    local be = player.Character:FindFirstChild("BodyEffects")
     if not be then return false end
     local ko = be:FindFirstChild("K.O")
     local dead = be:FindFirstChild("Dead")
     return ko and ko.Value and (not dead or not dead.Value)
 end
 
-
-local function DoStompWithRetry(hrp, hum, target, maxRetries)
-    if not target or not target.character then return false end
-
-    local targetChar = target.character
-    if not targetChar then return false end
-
-    local originalCF = hrp.CFrame
-
-    print(string.format("[HVH] Starting stomp on %s", target.player.Name))
-
-    hum.Sit = false
-    hum.PlatformStand = false
-    pcall(function()
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
-    end)
-    hrp.AssemblyLinearVelocity = Vector3.zero
-    hrp.AssemblyAngularVelocity = Vector3.zero
-
-    -- Same method Dex Explorer uses: just copy the target's HRP CFrame directly.
-    -- No offset, no lowest-part math, just match their exact position every frame.
-    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return false end
-
-    local function DoTeleport()
-        hrp.CFrame = targetHRP.CFrame
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end
-
-    DoTeleport()
-
-    -- Give the server time to confirm the position
-    task.wait(0.3)
-    RunService.Heartbeat:Wait()
-
-    -- Loop teleport on Heartbeat so we stay locked to them as they slide around
-    local lockConnection = RunService.Heartbeat:Connect(function()
-        if not targetChar or not targetChar.Parent then return end
-        local currentHRP = targetChar:FindFirstChild("HumanoidRootPart")
-        if currentHRP then
-            hrp.CFrame = currentHRP.CFrame
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-        end
-    end)
-
-    local stompCount = 0
-    local stompSuccess = false
-
-    for attempt = 1, maxRetries do
-        if not IsStillKOd(targetChar) then
-            print("[HVH] Target state changed, checking if stomp landed...")
-            stompSuccess = StompLanded(targetChar)
-            break
-        end
-
-        -- Hard re-confirm position every attempt
-        local currentHRP = targetChar:FindFirstChild("HumanoidRootPart")
-        if currentHRP then
-            hrp.CFrame = currentHRP.CFrame
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-        end
-
-        -- Wait a full Heartbeat so the server gets the updated position
-        RunService.Heartbeat:Wait()
-        RunService.Heartbeat:Wait() -- two ticks to be safe
-
-        -- Fire stomp remote - 2 fires per attempt with a gap between them
-        -- (3 rapid fires was hammering too fast, server was ignoring them)
-        pcall(function() mainevent:FireServer("Stomp") end)
-        stompCount = stompCount + 1
-        task.wait(0.1)
-        pcall(function() mainevent:FireServer("Stomp") end)
-        stompCount = stompCount + 1
-
-        -- Give server time to process and replicate the result
-        task.wait(0.2)
-
-        if StompLanded(targetChar) then
-            print(string.format("[HVH] ✅ Stomp confirmed on %s (attempt %d)", target.player.Name, attempt))
-            stompSuccess = true
-            break
-        end
-
-        print(string.format("[HVH] Attempt %d/%d - stomp not registered yet", attempt, maxRetries))
-    end
-
-    lockConnection:Disconnect()
-
-    pcall(function()
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end)
-
-    hrp.CFrame = originalCF
-    hrp.AssemblyLinearVelocity = Vector3.zero
-    hrp.AssemblyAngularVelocity = Vector3.zero
-
-    print(string.format("[HVH] Fired stomp %d times, Success: %s", stompCount, tostring(stompSuccess)))
-    return stompSuccess
-end
-
--- Main HVH loop
 task.spawn(function()
     while true do
         task.wait(0.2)
@@ -201,9 +60,6 @@ task.spawn(function()
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum then continue end
 
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then continue end
-
         local healthPercent = (hum.Health / hum.MaxHealth) * 100
         if healthPercent > 50 then continue end
 
@@ -214,19 +70,16 @@ task.spawn(function()
 
         HVH.Running = true
         HVH.OriginalTarget = AutoKill.Target
-        HVH.StompAttempts = 0
 
-        print("[HVH] Stopping AutoKill...")
+        -- Stop AutoKill cleanly
         AutoKill.Enabled = false
         AutoKill.StopCycle()
-
         if getgenv().AutoStompState then
             getgenv().AutoStompState.autostomp = false
         end
-
         task.wait(0.3)
 
-        -- Shuffle so we don't always try the same target first
+        -- Shuffle targets
         for i = #koTargets, 2, -1 do
             local j = math.random(1, i)
             koTargets[i], koTargets[j] = koTargets[j], koTargets[i]
@@ -236,36 +89,50 @@ task.spawn(function()
 
         for _, target in ipairs(koTargets) do
             if stompSucceeded then break end
-
-            if not IsStillKOd(target.character) then
-                print(string.format("[HVH] %s no longer KO'd, skipping", target.player.Name))
+            if not IsStillKOd(target) then
+                print(string.format("[HVH] %s no longer KO'd, skipping", target.Name))
                 continue
             end
 
-            HVH.StompAttempts = HVH.StompAttempts + 1
-            print(string.format("[HVH] Stomping %s (attempt #%d)", target.player.Name, HVH.StompAttempts))
+            print(string.format("[HVH] Stomping %s using AutoStompLoop", target.Name))
 
-            local success = DoStompWithRetry(hrp, hum, target, 5)
-
-            if success then
-                stompSucceeded = true
-                print("[HVH] ✅ Stomp successful!")
-            else
-                print(string.format("[HVH] ❌ Stomp on %s failed, trying next", target.player.Name))
+            -- Use the exact same AutoStomp system the main script uses
+            -- Just point Targeting.Target at the KO'd player and let it run
+            local state = getgenv().AutoStompState
+            if not state then
+                print("[HVH] AutoStompState not found, skipping")
+                continue
             end
 
-            task.wait(0.15)
+            local prevTargetingTarget = Targeting.Target
+            Targeting.Target = target
+            state.autostomp = true
+            getgenv().AutoStompLoop()
+
+            -- Wait for stomp to land (watch for Dead or KO going false)
+            local timeout = tick() + 3
+            while tick() < timeout do
+                if not IsStillKOd(target) then
+                    stompSucceeded = true
+                    print(string.format("[HVH] ✅ Stomp confirmed on %s", target.Name))
+                    break
+                end
+                task.wait(0.05)
+            end
+
+            -- Stop the stomp loop
+            state.autostomp = false
+            Targeting.Target = prevTargetingTarget
+
+            if not stompSucceeded then
+                print(string.format("[HVH] ❌ Stomp on %s timed out", target.Name))
+            end
+
+            task.wait(0.1)
         end
 
         if not stompSucceeded then
-            print("[HVH] ⚠️ All stomps failed, emergency attempt...")
-            local anyTarget = GetKOTarget()
-            if anyTarget and anyTarget.Character then
-                DoStompWithRetry(hrp, hum, {
-                    player = anyTarget,
-                    character = anyTarget.Character,
-                }, 3)
-            end
+            print("[HVH] ⚠️ All stomps failed")
         end
 
         task.wait(0.2)
@@ -293,19 +160,17 @@ task.spawn(function()
         end
 
         AutoKill.Enabled = true
-
         if AutoKill.Target or AutoKill.HasSelectedTargets() then
             AutoKill.StartCycle()
         end
 
         HVH.OriginalTarget = nil
         HVH.Running = false
-        HVH.StompAttempts = 0
         HVH.Cooldown = tick() + 4
 
         print("[HVH] Done, 4s cooldown")
     end
 end)
 
-print("[HVH] Loaded - Health < 50%, stomps KO targets to recover")
-print("autism")
+print("[HVH] Loaded - uses AutoStompLoop to stomp KO targets when HP < 50%")
+print("crayola")

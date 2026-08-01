@@ -24,15 +24,11 @@ local function GetAllKOTargets()
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer then
             local c = p.Character
-            if c then
-                local b = c:FindFirstChild("BodyEffects")
-                if b then
-                    local ko = b:FindFirstChild("K.O")
-                    local dead = b:FindFirstChild("Dead")
-                    if ko and ko.Value and dead and not dead.Value then
-                        table.insert(targets, p)
-                    end
-                end
+            local b = c and c:FindFirstChild("BodyEffects")
+            local ko = b and b:FindFirstChild("K.O")
+            local dead = b and b:FindFirstChild("Dead")
+            if ko and ko.Value and dead and not dead.Value then
+                table.insert(targets, p)
             end
         end
     end
@@ -48,27 +44,27 @@ local function IsStillKOd(player)
     return ko and ko.Value and (not dead or not dead.Value)
 end
 
-local function DoStomp(target)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local myHRP = char:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return end
-    local targetHRP = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return end
+-- Mirrors the working autostomp exactly:
+-- teleport to UpperTorso+3.5, wait RenderStepped, fire 5 stomps, return
+local function DoStompCycle(hrp, hum, target, returnCFrame)
+    local tc = target.Character
+    if not tc then return end
+    local ut = tc:FindFirstChild("UpperTorso")
+    if not ut then return end
 
-    -- Teleport directly onto target's HRP, same as ProtectPlayer.TeleportTo
-    myHRP.CFrame = targetHRP.CFrame
-    myHRP.AssemblyLinearVelocity = Vector3.zero
-    myHRP.AssemblyAngularVelocity = Vector3.zero
+    hum.Sit = false
+    hum.PlatformStand = false
+    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    hrp.Velocity = Vector3.zero
+    hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
 
-    -- Wait one Heartbeat so position replicates before firing
-    RunService.Heartbeat:Wait()
-    RunService.Heartbeat:Wait()
+    RunService.RenderStepped:Wait()
 
-    -- Fire the stomp remote directly, same as ProtectPlayer.Stomp()
-    pcall(function()
-        mainevent:FireServer("Stomp")
-    end)
+    for _ = 1, 5 do
+        pcall(function() mainevent:FireServer("Stomp") end)
+    end
+
+    hrp.CFrame = returnCFrame
 end
 
 task.spawn(function()
@@ -84,6 +80,9 @@ task.spawn(function()
 
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum then continue end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
 
         local healthPercent = (hum.Health / hum.MaxHealth) * 100
         if healthPercent > 50 then continue end
@@ -104,6 +103,9 @@ task.spawn(function()
         end
         task.wait(0.2)
 
+        -- Save return position
+        local returnCFrame = hrp.CFrame
+
         -- Shuffle targets
         for i = #koTargets, 2, -1 do
             local j = math.random(1, i)
@@ -121,43 +123,31 @@ task.spawn(function()
 
             print(string.format("[HVH] Stomping %s", target.Name))
 
-            -- Teleport + fire stomp remote in a tight loop for up to 3 seconds
+            -- Run the same cycle as the working autostomp until target is done or timeout
             local timeout = tick() + 3
-            local lockConn = RunService.Heartbeat:Connect(function()
-                if not target.Character then return end
-                local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
-                local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if targetHRP and myHRP then
-                    myHRP.CFrame = targetHRP.CFrame
-                    myHRP.AssemblyLinearVelocity = Vector3.zero
-                    myHRP.AssemblyAngularVelocity = Vector3.zero
-                end
-            end)
-
-            while tick() < timeout do
-                if not IsStillKOd(target) then
-                    stompSucceeded = true
-                    print(string.format("[HVH] ✅ Stomp confirmed on %s", target.Name))
-                    break
-                end
-
-                -- Teleport snap + fire
-                DoStomp(target)
-                task.wait(0.15)
+            while tick() < timeout and IsStillKOd(target) do
+                DoStompCycle(hrp, hum, target, returnCFrame)
+                task.wait()
             end
 
-            lockConn:Disconnect()
-
-            if not stompSucceeded then
+            if not IsStillKOd(target) then
+                stompSucceeded = true
+                print(string.format("[HVH] ✅ Stomp confirmed on %s", target.Name))
+            else
                 print(string.format("[HVH] ❌ Stomp on %s timed out", target.Name))
             end
 
+            -- Return to saved position between targets
+            hrp.CFrame = returnCFrame
             task.wait(0.1)
         end
 
         if not stompSucceeded then
             print("[HVH] ⚠️ All stomps failed")
         end
+
+        -- Make sure we're back
+        hrp.CFrame = returnCFrame
 
         task.wait(0.1)
 
@@ -196,5 +186,5 @@ task.spawn(function()
     end
 end)
 
-print("[HVH] Loaded - fires Stomp remote directly while loop-locked onto target")
-print("nigger")
+print("[HVH] Loaded - mirrors working autostomp: UpperTorso+3.5, RenderStepped, 5x stomp, return")
+print("humanoid rootpart")

@@ -104,6 +104,12 @@ task.spawn(function()
                 continue
             end
 
+            local Targeting = getgenv().Targeting
+            if not Targeting then
+                print("[HVH] Targeting not found, skipping")
+                continue
+            end
+
             local prevTargetingTarget = Targeting.Target
             Targeting.Target = target
             state.autostomp = true
@@ -122,7 +128,9 @@ task.spawn(function()
 
             -- Stop the stomp loop
             state.autostomp = false
-            Targeting.Target = prevTargetingTarget
+            if Targeting then
+                Targeting.Target = prevTargetingTarget
+            end
 
             if not stompSucceeded then
                 print(string.format("[HVH] ❌ Stomp on %s timed out", target.Name))
@@ -173,4 +181,4 @@ task.spawn(function()
 end)
 
 print("[HVH] Loaded - uses AutoStompLoop to stomp KO targets when HP < 50%")
-print("crayola")
+print("computers")

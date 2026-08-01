@@ -85,7 +85,7 @@ task.spawn(function()
         if not hrp then continue end
 
         local healthPercent = (hum.Health / hum.MaxHealth) * 100
-        if healthPercent > 50 then continue end
+        if healthPercent > 75 then continue end
 
         local koTargets = GetAllKOTargets()
         if #koTargets == 0 then continue end
@@ -124,10 +124,10 @@ task.spawn(function()
             print(string.format("[HVH] Stomping %s", target.Name))
 
             -- Run the same cycle as the working autostomp until target is done or timeout
-            local timeout = tick() + 3
+            local timeout = tick() + 8
             while tick() < timeout and IsStillKOd(target) do
                 DoStompCycle(hrp, hum, target, returnCFrame)
-                task.wait()
+                -- no task.wait() here - run as fast as possible just like the working script
             end
 
             if not IsStillKOd(target) then
@@ -187,4 +187,4 @@ task.spawn(function()
 end)
 
 print("[HVH] Loaded - mirrors working autostomp: UpperTorso+3.5, RenderStepped, 5x stomp, return")
-print("humanoid rootpart")
+print("blerd")

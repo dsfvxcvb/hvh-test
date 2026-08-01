@@ -52,11 +52,13 @@ local function GetAllKOTargets()
                     local dead = b:FindFirstChild("Dead")
                     if ko and ko.Value and dead and not dead.Value then
                         local ut = c:FindFirstChild("UpperTorso")
-                        if ut then
+                        local tHRP = c:FindFirstChild("HumanoidRootPart")
+                        if ut or tHRP then
                             table.insert(targets, {
                                 player = p,
                                 character = c,
-                                upperTorso = ut
+                                upperTorso = ut,
+                                hrp = tHRP
                             })
                         end
                     end
@@ -94,14 +96,13 @@ local function DoStompWithRetry(hrp, hum, target, maxRetries)
     if not target or not target.character then return false end
     
     local targetChar = target.character
-    local ut = target.upperTorso
-    if not ut then return false end
-    
+    if not targetChar then return false end
+
     local originalCF = hrp.CFrame
 
     print(string.format("[HVH] Starting stomp on %s", target.player.Name))
     
-    -- FIX #1: Set humanoid to Physics state so it stops fighting our teleport
+    -- Set humanoid to Physics state so it stops fighting our teleport
     hum.Sit = false
     hum.PlatformStand = false
     pcall(function()
@@ -110,30 +111,45 @@ local function DoStompWithRetry(hrp, hum, target, maxRetries)
 
     hrp.AssemblyLinearVelocity = Vector3.zero
     hrp.AssemblyAngularVelocity = Vector3.zero
-    
-    -- Teleport above target
-    local function GetStompCFrame()
-        local currentUT = targetChar:FindFirstChild("UpperTorso")
-        if currentUT then
-            return CFrame.new(currentUT.Position + Vector3.new(0, 3.5, 0))
-        end
-        return CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
+
+    -- Lock directly onto the target's HRP instead of floating above UpperTorso.
+    -- A downed player's HRP is on or near the ground - matching it puts us
+    -- on top of them, not floating, so the server sees a valid stomp position.
+    local function GetTargetHRP()
+        return targetChar:FindFirstChild("HumanoidRootPart")
     end
 
-    hrp.CFrame = GetStompCFrame()
+    local function GetStompCFrame()
+        local targetHRP = GetTargetHRP()
+        if targetHRP then
+            -- Sit exactly on top of their HRP (same XZ, just slightly above so we're standing on them)
+            return CFrame.new(targetHRP.Position + Vector3.new(0, 1, 0))
+        end
+        -- Fallback to UpperTorso if HRP somehow missing
+        local ut = targetChar:FindFirstChild("UpperTorso")
+        if ut then
+            return CFrame.new(ut.Position + Vector3.new(0, 1, 0))
+        end
+        return nil
+    end
+
+    local initialCF = GetStompCFrame()
+    if not initialCF then return false end
+
+    hrp.CFrame = initialCF
     hrp.AssemblyLinearVelocity = Vector3.zero
     hrp.AssemblyAngularVelocity = Vector3.zero
 
-    -- FIX #2: Wait longer + one Heartbeat tick so server confirms our position
+    -- Wait for server to confirm position before firing
     task.wait(0.25)
     RunService.Heartbeat:Wait()
 
-    -- FIX #1: Use Heartbeat (not RenderStepped) for position lock - runs with physics
+    -- Use Heartbeat to keep us locked on their HRP (runs with physics, not after it)
     local lockConnection = RunService.Heartbeat:Connect(function()
         if not targetChar or not targetChar.Parent then return end
-        local currentUT = targetChar:FindFirstChild("UpperTorso")
-        if currentUT then
-            hrp.CFrame = CFrame.new(currentUT.Position + Vector3.new(0, 3.5, 0))
+        local cf = GetStompCFrame()
+        if cf then
+            hrp.CFrame = cf
             hrp.AssemblyLinearVelocity = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
         end
@@ -151,8 +167,11 @@ local function DoStompWithRetry(hrp, hum, target, maxRetries)
         end
         
         -- Re-confirm position right before firing
-        hrp.CFrame = GetStompCFrame()
-        hrp.AssemblyLinearVelocity = Vector3.zero
+        local confirmCF = GetStompCFrame()
+        if confirmCF then
+            hrp.CFrame = confirmCF
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
         RunService.Heartbeat:Wait()
 
         -- Fire stomp remote 3 times per attempt for reliability
@@ -335,4 +354,4 @@ task.spawn(function()
 end)
 
 print("[HVH] Loaded - Health < 50%, stomps KO targets to recover")
-print("claude")
+print("jynxzi")

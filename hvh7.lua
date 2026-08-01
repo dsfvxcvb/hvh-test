@@ -17,6 +17,8 @@ CombatAutoKill:AddToggle('HVHEnabled', {
     end
 })
 
+local mainevent = ReplicatedStorage:WaitForChild("MainEvent")
+
 local function GetAllKOTargets()
     local targets = {}
     for _, p in ipairs(Players:GetPlayers()) do
@@ -46,9 +48,32 @@ local function IsStillKOd(player)
     return ko and ko.Value and (not dead or not dead.Value)
 end
 
+local function DoStomp(target)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local myHRP = char:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+    local targetHRP = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return end
+
+    -- Teleport directly onto target's HRP, same as ProtectPlayer.TeleportTo
+    myHRP.CFrame = targetHRP.CFrame
+    myHRP.AssemblyLinearVelocity = Vector3.zero
+    myHRP.AssemblyAngularVelocity = Vector3.zero
+
+    -- Wait one Heartbeat so position replicates before firing
+    RunService.Heartbeat:Wait()
+    RunService.Heartbeat:Wait()
+
+    -- Fire the stomp remote directly, same as ProtectPlayer.Stomp()
+    pcall(function()
+        mainevent:FireServer("Stomp")
+    end)
+end
+
 task.spawn(function()
     while true do
-        task.wait(0.2)
+        task.wait(0.1)
 
         if tick() < HVH.Cooldown then continue end
         if not HVH.Enabled or HVH.Running then continue end
@@ -77,7 +102,7 @@ task.spawn(function()
         if getgenv().AutoStompState then
             getgenv().AutoStompState.autostomp = false
         end
-        task.wait(0.3)
+        task.wait(0.2)
 
         -- Shuffle targets
         for i = #koTargets, 2, -1 do
@@ -94,31 +119,34 @@ task.spawn(function()
                 continue
             end
 
-            print(string.format("[HVH] Stomping %s using AutoStompLoop", target.Name))
+            print(string.format("[HVH] Stomping %s", target.Name))
 
-            -- Use AutoKill.AutoStomp directly — same function the main script
-            -- uses internally, handles Targeting.Target and AutoStompLoop for us
-            local state = getgenv().AutoStompState
-            if not state or state.running then
-                print("[HVH] AutoStompState not ready, skipping")
-                continue
-            end
-
-            AutoKill.AutoStomp(target)
-
-            -- Wait for stomp to land (K.O goes false or Dead goes true)
+            -- Teleport + fire stomp remote in a tight loop for up to 3 seconds
             local timeout = tick() + 3
+            local lockConn = RunService.Heartbeat:Connect(function()
+                if not target.Character then return end
+                local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if targetHRP and myHRP then
+                    myHRP.CFrame = targetHRP.CFrame
+                    myHRP.AssemblyLinearVelocity = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                end
+            end)
+
             while tick() < timeout do
                 if not IsStillKOd(target) then
                     stompSucceeded = true
                     print(string.format("[HVH] ✅ Stomp confirmed on %s", target.Name))
                     break
                 end
-                task.wait(0.05)
+
+                -- Teleport snap + fire
+                DoStomp(target)
+                task.wait(0.15)
             end
 
-            -- Stop the stomp loop regardless of outcome
-            AutoKill.StopAutoStomp()
+            lockConn:Disconnect()
 
             if not stompSucceeded then
                 print(string.format("[HVH] ❌ Stomp on %s timed out", target.Name))
@@ -131,7 +159,7 @@ task.spawn(function()
             print("[HVH] ⚠️ All stomps failed")
         end
 
-        task.wait(0.2)
+        task.wait(0.1)
 
         -- Resume AutoKill
         print("[HVH] Resuming AutoKill...")
@@ -168,5 +196,5 @@ task.spawn(function()
     end
 end)
 
-print("[HVH] Loaded - uses AutoStompLoop to stomp KO targets when HP < 50%")
-print("valorant")
+print("[HVH] Loaded - fires Stomp remote directly while loop-locked onto target")
+print("nigger")

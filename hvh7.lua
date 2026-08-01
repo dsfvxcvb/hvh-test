@@ -5,7 +5,7 @@ local HVH = {
 }
 
 CombatAutoKill:AddToggle('HVHEnabled', {
-    Text = "HVH",
+    Text = "Auto Heal",
     Default = false,
     Callback = function(Value)
         HVH.Enabled = Value
@@ -13,6 +13,17 @@ CombatAutoKill:AddToggle('HVHEnabled', {
             HVH.Stomping = false
             HVH.LastHealth = nil
         end
+    end
+})
+
+CombatAutoKill:AddSlider('AutoHealThreshold', {
+    Text = "Health %",
+    Min = 1,
+    Max = 100,
+    Default = 50,
+    Rounding = 0,
+    Callback = function(Value)
+        getgenv().HVHHealthThreshold = Value
     end
 })
 
@@ -113,7 +124,7 @@ RunService.Heartbeat:Connect(function()
     local lastHp = HVH.LastHealth
     HVH.LastHealth = hp
 
-    if pct >= 75 then return end          -- above threshold, do nothing
+    if pct >= (getgenv().HVHHealthThreshold or 75) then return end
     if not lastHp then return end          -- no previous reading
     if hp >= lastHp then return end        -- health went up or stayed same, not a hit
     if hp <= 0 then return end             -- already dead

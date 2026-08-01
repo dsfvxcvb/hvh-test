@@ -335,3 +335,4 @@ task.spawn(function()
 end)
 
 print("[HVH] Loaded - Health < 50%, stomps KO targets to recover")
+print("claude")

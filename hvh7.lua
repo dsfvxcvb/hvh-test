@@ -83,32 +83,6 @@ local function IsStillKOd(targetChar)
     return ko and ko.Value and (not dead or not dead.Value)
 end
 
--- Find the lowest BasePart in the ragdoll so we land on the actual body,
--- not floating above a tilted/sideways HRP
-local function GetLowestPartPosition(targetChar)
-    local lowestY = math.huge
-    local lowestPos = nil
-
-    for _, part in ipairs(targetChar:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-            local y = part.Position.Y
-            if y < lowestY then
-                lowestY = y
-                lowestPos = part.Position
-            end
-        end
-    end
-
-    -- fallback to HRP if nothing else found
-    if not lowestPos then
-        local hrpTarget = targetChar:FindFirstChild("HumanoidRootPart")
-        if hrpTarget then
-            lowestPos = hrpTarget.Position
-        end
-    end
-
-    return lowestPos
-end
 
 local function DoStompWithRetry(hrp, hum, target, maxRetries)
     if not target or not target.character then return false end
@@ -128,33 +102,29 @@ local function DoStompWithRetry(hrp, hum, target, maxRetries)
     hrp.AssemblyLinearVelocity = Vector3.zero
     hrp.AssemblyAngularVelocity = Vector3.zero
 
-    -- Build a stomp CFrame from the LOWEST part of their ragdoll.
-    -- +2.5 Y puts us just above the lowest point so we're standing on the body,
-    -- not floating above a sideways HRP or clipping inside the floor.
-    local function GetStompCFrame()
-        local pos = GetLowestPartPosition(targetChar)
-        if not pos then return nil end
-        return CFrame.new(pos + Vector3.new(0, 2.5, 0))
+    -- Same method Dex Explorer uses: just copy the target's HRP CFrame directly.
+    -- No offset, no lowest-part math, just match their exact position every frame.
+    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return false end
+
+    local function DoTeleport()
+        hrp.CFrame = targetHRP.CFrame
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
     end
 
-    local initialCF = GetStompCFrame()
-    if not initialCF then return false end
+    DoTeleport()
 
-    hrp.CFrame = initialCF
-    hrp.AssemblyLinearVelocity = Vector3.zero
-    hrp.AssemblyAngularVelocity = Vector3.zero
-
-    -- Give the server enough time to confirm the teleport before we fire
+    -- Give the server time to confirm the position
     task.wait(0.3)
     RunService.Heartbeat:Wait()
 
-    -- Heartbeat lock: track their lowest part so we stay planted on the ragdoll
-    -- even if it slides or shifts
+    -- Loop teleport on Heartbeat so we stay locked to them as they slide around
     local lockConnection = RunService.Heartbeat:Connect(function()
         if not targetChar or not targetChar.Parent then return end
-        local cf = GetStompCFrame()
-        if cf then
-            hrp.CFrame = cf
+        local currentHRP = targetChar:FindFirstChild("HumanoidRootPart")
+        if currentHRP then
+            hrp.CFrame = currentHRP.CFrame
             hrp.AssemblyLinearVelocity = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
         end
@@ -338,4 +308,4 @@ task.spawn(function()
 end)
 
 print("[HVH] Loaded - Health < 50%, stomps KO targets to recover")
-print("dr house")
+print("hypergamy")

@@ -96,26 +96,17 @@ task.spawn(function()
 
             print(string.format("[HVH] Stomping %s using AutoStompLoop", target.Name))
 
-            -- Use the exact same AutoStomp system the main script uses
-            -- Just point Targeting.Target at the KO'd player and let it run
+            -- Use AutoKill.AutoStomp directly — same function the main script
+            -- uses internally, handles Targeting.Target and AutoStompLoop for us
             local state = getgenv().AutoStompState
-            if not state then
-                print("[HVH] AutoStompState not found, skipping")
+            if not state or state.running then
+                print("[HVH] AutoStompState not ready, skipping")
                 continue
             end
 
-            local Targeting = getgenv().Targeting
-            if not Targeting then
-                print("[HVH] Targeting not found, skipping")
-                continue
-            end
+            AutoKill.AutoStomp(target)
 
-            local prevTargetingTarget = Targeting.Target
-            Targeting.Target = target
-            state.autostomp = true
-            getgenv().AutoStompLoop()
-
-            -- Wait for stomp to land (watch for Dead or KO going false)
+            -- Wait for stomp to land (K.O goes false or Dead goes true)
             local timeout = tick() + 3
             while tick() < timeout do
                 if not IsStillKOd(target) then
@@ -126,11 +117,8 @@ task.spawn(function()
                 task.wait(0.05)
             end
 
-            -- Stop the stomp loop
-            state.autostomp = false
-            if Targeting then
-                Targeting.Target = prevTargetingTarget
-            end
+            -- Stop the stomp loop regardless of outcome
+            AutoKill.StopAutoStomp()
 
             if not stompSucceeded then
                 print(string.format("[HVH] ❌ Stomp on %s timed out", target.Name))
@@ -181,4 +169,4 @@ task.spawn(function()
 end)
 
 print("[HVH] Loaded - uses AutoStompLoop to stomp KO targets when HP < 50%")
-print("computers")
+print("valorant")

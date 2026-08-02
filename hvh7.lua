@@ -3,6 +3,7 @@ local HVH = {
     Stomping = false,
     LastHealth = nil,
 }
+print("spoofed stomp")
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "Auto Heal",

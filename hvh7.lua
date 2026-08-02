@@ -65,6 +65,7 @@ local function RunStomp(target)
     if not ut then return end
 
     local returnCF = hrp.CFrame
+    local returnVel = hrp.AssemblyLinearVelocity
 
     -- Pause AutoKill briefly
     local wasEnabled = AutoKill.Enabled
@@ -74,56 +75,54 @@ local function RunStomp(target)
         getgenv().AutoStompState.autostomp = false
     end
 
-    -- Freeze camera during stomp
     local cam = workspace.CurrentCamera
-    local originalCamCF = cam.CFrame
-    local originalCamType = cam.CameraType
 
-    local function RestoreCamera()
-        pcall(function()
-            cam.CameraType = originalCamType
-        end)
-    end
-
-    if getgenv().AutoKillSpoof then
-        pcall(function()
-            cam.CameraType = Enum.CameraType.Scriptable
-            cam.CFrame = originalCamCF
-        end)
-    end
-
-    -- Stomp loop - bail immediately if we lose our character
-    local ok, err = pcall(function()
-        local timeout = tick() + 8
-        while tick() < timeout and IsStillKOd(target) do
-            -- stop if we lost character (got downed/died)
-            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                break
-            end
-            hum.Sit = false
-            hum.PlatformStand = false
-            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-            hrp.Velocity = Vector3.zero
-            hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
-            RunService.RenderStepped:Wait()
-            for _ = 1, 5 do
-                pcall(function() mainevent:FireServer("Stomp") end)
-            end
-            hrp.CFrame = returnCF
-            if getgenv().AutoKillSpoof then
-                pcall(function() cam.CFrame = originalCamCF end)
-            end
+    local function DoSpoofedTeleport(targetCF)
+        -- Mirror exact autokill spoof: swap cam subject for 1 frame, teleport, fire, snap back
+        local originalSubject = cam.CameraSubject
+        local originalVel = hrp.AssemblyLinearVelocity
+        if getgenv().AutoKillSpoof and getgenv().AutoKillSetback then
+            getgenv().AutoKillSetback.CFrame = CFrame.new(returnCF.Position)
+            cam.CameraSubject = getgenv().AutoKillSetback
         end
-    end)
+        hrp.CFrame = targetCF
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        RunService.RenderStepped:Wait()
+        for _ = 1, 5 do
+            pcall(function() mainevent:FireServer("Stomp") end)
+        end
+        hrp.CFrame = returnCF
+        hrp.AssemblyLinearVelocity = originalVel
+        if getgenv().AutoKillSpoof and getgenv().AutoKillSetback then
+            cam.CameraSubject = originalSubject
+        end
+    end
 
-    -- Always restore camera no matter what happened
-    RestoreCamera()
+    local timeout = tick() + 8
+    while tick() < timeout and IsStillKOd(target) do
+        -- bail if we lost our character
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            break
+        end
+        hum.Sit = false
+        hum.PlatformStand = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        hrp.Velocity = Vector3.zero
+        -- get fresh target position each iteration
+        local freshUt = tc:FindFirstChild("UpperTorso")
+        if not freshUt then break end
+        DoSpoofedTeleport(CFrame.new(freshUt.Position + Vector3.new(0, 3.5, 0)))
+    end
+
+    -- Make sure we're back
+    pcall(function()
+        hrp.CFrame = returnCF
+        hrp.AssemblyLinearVelocity = returnVel
+    end)
 
     local success = not IsStillKOd(target)
     print(string.format("[HVH] Stomp on %s: %s", target.Name, success and "✅" or "❌ timed out"))
-
-    -- Return to position
-    hrp.CFrame = returnCF
 
     -- Resume AutoKill
     if wasEnabled then
@@ -173,4 +172,4 @@ end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
-print("dooda")
+print("spoofofofofof please")

@@ -52,77 +52,6 @@ local function IsStillKOd(player)
     return ko and ko.Value and (not dead or not dead.Value)
 end
 
-local function RunStomp(target)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
-
-    local tc = target.Character
-    if not tc then return end
-
-    local returnCF = hrp.CFrame
-
-    -- Pause AutoKill briefly
-    local wasEnabled = AutoKill.Enabled
-    AutoKill.Enabled = false
-    AutoKill.StopCycle()
-    if getgenv().AutoStompState then
-        getgenv().AutoStompState.autostomp = false
-    end
-
-    local timeout = tick() + 8
-    while tick() < timeout and IsStillKOd(target) do
-        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then break end
-        local ut = tc:FindFirstChild("UpperTorso") or tc:FindFirstChild("HumanoidRootPart")
-        if not ut then break end
-
-        local o = hrp.CFrame
-        local originalVel = hrp.AssemblyLinearVelocity
-        local originalCamOffset = hum.CameraOffset
-
-        hum.Sit = false
-        hum.PlatformStand = false
-
-        -- teleport to target
-        hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
-        -- offset camera so it appears we didn't move (same as AutoStompLoop)
-        hum.CameraOffset = o.Position - hrp.Position
-
-        RunService.RenderStepped:Wait()
-
-        for _ = 1, 5 do
-            task.spawn(function()
-                local me = getgenv().MainEvent
-                if me then me:FireServer("Stomp") end
-            end)
-        end
-
-        -- restore camera offset and position
-        hum.CameraOffset = originalCamOffset
-        hrp.CFrame = o
-        hrp.AssemblyLinearVelocity = originalVel
-    end
-
-    -- ensure we're back
-    pcall(function()
-        hrp.CFrame = returnCF
-        hum.CameraOffset = Vector3.zero
-    end)
-
-    local success = not IsStillKOd(target)
-    print(string.format("[HVH] Stomp on %s: %s", target.Name, success and "✅" or "❌ timed out"))
-
-    -- Resume AutoKill
-    if wasEnabled then
-        AutoKill.Enabled = true
-        if AutoKill.Target or AutoKill.HasSelectedTargets() then
-            AutoKill.StartCycle()
-        end
-    end
-end
-
 RunService.Heartbeat:Connect(function()
     if not HVH.Enabled or HVH.Stomping then return end
     if not AutoKill.Enabled then return end
@@ -152,13 +81,30 @@ RunService.Heartbeat:Connect(function()
     print(string.format("[HVH] HP dropped to %d%%, stomping %s", math.floor(pct), target.Name))
 
     task.spawn(function()
-        RunStomp(target)
+        -- use the exact same spoofed autostomp that autokill uses
+        local state = getgenv().AutoStompState
+        if state and not state.running then
+            local originalTarget = Targeting.Target
+            Targeting.Target = target
+            state.autostomp = true
+            getgenv().AutoStompLoop()
+            -- wait for stomp to complete or target to no longer be KO'd
+            local timeout = tick() + 8
+            while state.running and tick() < timeout do
+                if not IsStillKOd(target) then
+                    state.autostomp = false
+                end
+                task.wait(0.05)
+            end
+            state.autostomp = false
+            Targeting.Target = originalTarget
+        end
         HVH.Stomping = false
         HVH.LastHealth = nil
+        print(string.format("[HVH] Stomp on %s: %s", target.Name, not IsStillKOd(target) and "✅" or "❌ timed out"))
     end)
 end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
-print("consistant loading?")
-print("jinx")
+print("Clav rhinoplasty")

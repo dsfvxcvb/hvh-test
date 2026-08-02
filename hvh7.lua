@@ -55,7 +55,6 @@ end
 RunService.Heartbeat:Connect(function()
     if not HVH.Enabled or HVH.Stomping then return end
     if not AutoKill.Enabled then return end
-    -- don't trigger if autokill is already stomping
     if AutoKill.GunMethod.StompRunning then return end
 
     local char = LocalPlayer.Character
@@ -83,21 +82,19 @@ RunService.Heartbeat:Connect(function()
     print(string.format("[HVH] HP dropped to %d%%, stomping %s", math.floor(pct), target.Name))
 
     task.spawn(function()
-        -- Use AutoKill.AutoStomp directly — it already has the working spoof built in
-        -- Just set StompRunning so the combat cycle doesn't interfere
-        AutoKill.GunMethod.StompRunning = true
-        AutoKill.GunMethod.StompTarget = target
-
+        -- AutoStomp cancels if AutoKill.Target ~= target, so set it temporarily
+        local originalTarget = AutoKill.Target
+        AutoKill.Target = target
         AutoKill.AutoStomp(target)
 
-        -- wait for AutoStomp to finish
+        -- wait for stomp to finish
         local timeout = tick() + 10
         while AutoKill.GunMethod.StompRunning and tick() < timeout do
             task.wait(0.05)
         end
 
-        AutoKill.GunMethod.StompRunning = false
-        AutoKill.GunMethod.StompTarget = nil
+        -- restore original target
+        AutoKill.Target = originalTarget
 
         HVH.Stomping = false
         HVH.LastHealth = nil
@@ -107,4 +104,4 @@ end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
-print("boutt go eat")
+print("peasent haircut")

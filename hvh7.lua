@@ -79,7 +79,6 @@ RunService.Heartbeat:Connect(function()
     if not target then return end
 
     HVH.Stomping = true
-    print(string.format("[HVH] HP dropped to %d%%, stomping %s", math.floor(pct), target.Name))
 
     task.spawn(function()
         -- AutoStomp cancels if AutoKill.Target ~= target, so set it temporarily
@@ -98,10 +97,5 @@ RunService.Heartbeat:Connect(function()
 
         HVH.Stomping = false
         HVH.LastHealth = nil
-        print(string.format("[HVH] Stomp on %s: %s", target.Name, not IsStillKOd(target) and "✅" or "❌ timed out"))
     end)
 end)
-
-print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
-print("niccer")
-print("peasent haircut")

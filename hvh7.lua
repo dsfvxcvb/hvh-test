@@ -74,38 +74,50 @@ local function RunStomp(target)
         getgenv().AutoStompState.autostomp = false
     end
 
-    -- Freeze camera in place during stomp so teleport is invisible
+    -- Freeze camera during stomp
     local cam = workspace.CurrentCamera
     local originalCamCF = cam.CFrame
     local originalCamType = cam.CameraType
-    if getgenv().AutoKillSpoof then
-        cam.CameraType = Enum.CameraType.Scriptable
-        cam.CFrame = originalCamCF
+
+    local function RestoreCamera()
+        pcall(function()
+            cam.CameraType = originalCamType
+        end)
     end
 
-    -- Exact same method as the working autostomp, looped until confirmed or 8s timeout
-    local timeout = tick() + 8
-    while tick() < timeout and IsStillKOd(target) do
-        hum.Sit = false
-        hum.PlatformStand = false
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        hrp.Velocity = Vector3.zero
-        hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
-        RunService.RenderStepped:Wait()
-        for _ = 1, 5 do
-            pcall(function() mainevent:FireServer("Stomp") end)
-        end
-        hrp.CFrame = returnCF
-        -- keep camera locked each frame
-        if getgenv().AutoKillSpoof then
+    if getgenv().AutoKillSpoof then
+        pcall(function()
+            cam.CameraType = Enum.CameraType.Scriptable
             cam.CFrame = originalCamCF
-        end
+        end)
     end
 
-    -- Restore camera
-    if getgenv().AutoKillSpoof then
-        cam.CameraType = originalCamType
-    end
+    -- Stomp loop - bail immediately if we lose our character
+    local ok, err = pcall(function()
+        local timeout = tick() + 8
+        while tick() < timeout and IsStillKOd(target) do
+            -- stop if we lost character (got downed/died)
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                break
+            end
+            hum.Sit = false
+            hum.PlatformStand = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            hrp.Velocity = Vector3.zero
+            hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
+            RunService.RenderStepped:Wait()
+            for _ = 1, 5 do
+                pcall(function() mainevent:FireServer("Stomp") end)
+            end
+            hrp.CFrame = returnCF
+            if getgenv().AutoKillSpoof then
+                pcall(function() cam.CFrame = originalCamCF end)
+            end
+        end
+    end)
+
+    -- Always restore camera no matter what happened
+    RestoreCamera()
 
     local success = not IsStillKOd(target)
     print(string.format("[HVH] Stomp on %s: %s", target.Name, success and "✅" or "❌ timed out"))
@@ -161,4 +173,4 @@ end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
-print("THE CHI THE CHI THE CHI THE CHIC CICIICICI")
+print("dooda")

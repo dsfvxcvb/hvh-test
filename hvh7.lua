@@ -81,14 +81,14 @@ RunService.Heartbeat:Connect(function()
     print(string.format("[HVH] HP dropped to %d%%, stomping %s", math.floor(pct), target.Name))
 
     task.spawn(function()
-        -- use the exact same spoofed autostomp that autokill uses
         local state = getgenv().AutoStompState
-        if state and not state.running then
+        local Targeting = getgenv().Targeting
+
+        if state and Targeting and not state.running then
             local originalTarget = Targeting.Target
             Targeting.Target = target
             state.autostomp = true
             getgenv().AutoStompLoop()
-            -- wait for stomp to complete or target to no longer be KO'd
             local timeout = tick() + 8
             while state.running and tick() < timeout do
                 if not IsStillKOd(target) then
@@ -99,6 +99,7 @@ RunService.Heartbeat:Connect(function()
             state.autostomp = false
             Targeting.Target = originalTarget
         end
+
         HVH.Stomping = false
         HVH.LastHealth = nil
         print(string.format("[HVH] Stomp on %s: %s", target.Name, not IsStillKOd(target) and "✅" or "❌ timed out"))
@@ -107,4 +108,4 @@ end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
-print("Clav rhinoplasty")
+print("yeah yeah its updated nyla")

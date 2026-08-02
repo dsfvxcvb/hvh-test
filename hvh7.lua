@@ -61,11 +61,8 @@ local function RunStomp(target)
 
     local tc = target.Character
     if not tc then return end
-    local ut = tc:FindFirstChild("UpperTorso")
-    if not ut then return end
 
     local returnCF = hrp.CFrame
-    local returnVel = hrp.AssemblyLinearVelocity
 
     -- Pause AutoKill briefly
     local wasEnabled = AutoKill.Enabled
@@ -75,50 +72,43 @@ local function RunStomp(target)
         getgenv().AutoStompState.autostomp = false
     end
 
-    local cam = workspace.CurrentCamera
-
-    local function DoSpoofedTeleport(targetCF)
-        -- Mirror exact autokill spoof: swap cam subject for 1 frame, teleport, fire, snap back
-        local originalSubject = cam.CameraSubject
-        local originalVel = hrp.AssemblyLinearVelocity
-        if getgenv().AutoKillSpoof and getgenv().AutoKillSetback then
-            getgenv().AutoKillSetback.CFrame = CFrame.new(returnCF.Position)
-            cam.CameraSubject = getgenv().AutoKillSetback
-        end
-        hrp.CFrame = targetCF
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-        RunService.RenderStepped:Wait()
-        for _ = 1, 5 do
-            pcall(function() mainevent:FireServer("Stomp") end)
-        end
-        hrp.CFrame = returnCF
-        hrp.AssemblyLinearVelocity = originalVel
-        if getgenv().AutoKillSpoof and getgenv().AutoKillSetback then
-            cam.CameraSubject = originalSubject
-        end
-    end
-
     local timeout = tick() + 8
     while tick() < timeout and IsStillKOd(target) do
-        -- bail if we lost our character
-        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            break
-        end
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then break end
+        local ut = tc:FindFirstChild("UpperTorso") or tc:FindFirstChild("HumanoidRootPart")
+        if not ut then break end
+
+        local o = hrp.CFrame
+        local originalVel = hrp.AssemblyLinearVelocity
+        local originalCamOffset = hum.CameraOffset
+
         hum.Sit = false
         hum.PlatformStand = false
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        hrp.Velocity = Vector3.zero
-        -- get fresh target position each iteration
-        local freshUt = tc:FindFirstChild("UpperTorso")
-        if not freshUt then break end
-        DoSpoofedTeleport(CFrame.new(freshUt.Position + Vector3.new(0, 3.5, 0)))
+
+        -- teleport to target
+        hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
+        -- offset camera so it appears we didn't move (same as AutoStompLoop)
+        hum.CameraOffset = o.Position - hrp.Position
+
+        RunService.RenderStepped:Wait()
+
+        for _ = 1, 5 do
+            task.spawn(function()
+                local me = getgenv().MainEvent
+                if me then me:FireServer("Stomp") end
+            end)
+        end
+
+        -- restore camera offset and position
+        hum.CameraOffset = originalCamOffset
+        hrp.CFrame = o
+        hrp.AssemblyLinearVelocity = originalVel
     end
 
-    -- Make sure we're back
+    -- ensure we're back
     pcall(function()
         hrp.CFrame = returnCF
-        hrp.AssemblyLinearVelocity = returnVel
+        hum.CameraOffset = Vector3.zero
     end)
 
     local success = not IsStillKOd(target)
@@ -133,7 +123,6 @@ local function RunStomp(target)
     end
 end
 
--- Watch for health drops and stomp immediately each time
 RunService.Heartbeat:Connect(function()
     if not HVH.Enabled or HVH.Stomping then return end
     if not AutoKill.Enabled then return end
@@ -148,7 +137,6 @@ RunService.Heartbeat:Connect(function()
     if maxHp <= 0 then return end
 
     local pct = (hp / maxHp) * 100
-
     local lastHp = HVH.LastHealth
     HVH.LastHealth = hp
 
@@ -172,4 +160,4 @@ end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
-print("spoofofofofof please")
+print("consistant loading?")

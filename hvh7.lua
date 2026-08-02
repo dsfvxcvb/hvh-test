@@ -74,12 +74,13 @@ local function RunStomp(target)
         getgenv().AutoStompState.autostomp = false
     end
 
-    -- Spoof camera so the teleport is invisible on our screen
+    -- Freeze camera in place during stomp so teleport is invisible
     local cam = workspace.CurrentCamera
-    local originalSubject = cam.CameraSubject
-    if getgenv().AutoKillSpoof and getgenv().AutoKillSetback then
-        getgenv().AutoKillSetback.CFrame = CFrame.new(returnCF.Position)
-        cam.CameraSubject = getgenv().AutoKillSetback
+    local originalCamCF = cam.CFrame
+    local originalCamType = cam.CameraType
+    if getgenv().AutoKillSpoof then
+        cam.CameraType = Enum.CameraType.Scriptable
+        cam.CFrame = originalCamCF
     end
 
     -- Exact same method as the working autostomp, looped until confirmed or 8s timeout
@@ -95,11 +96,15 @@ local function RunStomp(target)
             pcall(function() mainevent:FireServer("Stomp") end)
         end
         hrp.CFrame = returnCF
+        -- keep camera locked each frame
+        if getgenv().AutoKillSpoof then
+            cam.CFrame = originalCamCF
+        end
     end
 
     -- Restore camera
-    if getgenv().AutoKillSpoof and getgenv().AutoKillSetback then
-        cam.CameraSubject = originalSubject
+    if getgenv().AutoKillSpoof then
+        cam.CameraType = originalCamType
     end
 
     local success = not IsStillKOd(target)
@@ -156,4 +161,4 @@ end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
-print("updatez")
+print("THE CHI THE CHI THE CHI THE CHIC CICIICICI")

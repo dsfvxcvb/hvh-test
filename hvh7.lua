@@ -3,7 +3,6 @@ local HVH = {
     Stomping = false,
     LastHealth = nil,
 }
-print("spoofed stomp")
 
 CombatAutoKill:AddToggle('HVHEnabled', {
     Text = "Auto Heal",
@@ -66,7 +65,6 @@ local function RunStomp(target)
     if not ut then return end
 
     local returnCF = hrp.CFrame
-    local originalVel = hrp.AssemblyLinearVelocity
 
     -- Pause AutoKill briefly
     local wasEnabled = AutoKill.Enabled
@@ -76,16 +74,15 @@ local function RunStomp(target)
         getgenv().AutoStompState.autostomp = false
     end
 
-    -- Set up camera spoof if enabled (so we don't visually teleport)
+    -- Spoof camera so the teleport is invisible on our screen
     local cam = workspace.CurrentCamera
     local originalSubject = cam.CameraSubject
-    local useSpoof = getgenv().AutoKillSpoof and getgenv().AutoKillSetback
-    if useSpoof then
+    if getgenv().AutoKillSpoof and getgenv().AutoKillSetback then
         getgenv().AutoKillSetback.CFrame = CFrame.new(returnCF.Position)
         cam.CameraSubject = getgenv().AutoKillSetback
     end
 
-    -- Stomp loop: teleport, fire, return, repeat until confirmed or timeout
+    -- Exact same method as the working autostomp, looped until confirmed or 8s timeout
     local timeout = tick() + 8
     while tick() < timeout and IsStillKOd(target) do
         hum.Sit = false
@@ -97,22 +94,19 @@ local function RunStomp(target)
         for _ = 1, 5 do
             pcall(function() mainevent:FireServer("Stomp") end)
         end
-        -- immediately snap back so we don't visually move
         hrp.CFrame = returnCF
-        hrp.AssemblyLinearVelocity = originalVel
     end
 
     -- Restore camera
-    if useSpoof then
+    if getgenv().AutoKillSpoof and getgenv().AutoKillSetback then
         cam.CameraSubject = originalSubject
     end
 
-    -- Ensure we're back at original position
-    hrp.CFrame = returnCF
-    hrp.AssemblyLinearVelocity = originalVel
-
     local success = not IsStillKOd(target)
     print(string.format("[HVH] Stomp on %s: %s", target.Name, success and "✅" or "❌ timed out"))
+
+    -- Return to position
+    hrp.CFrame = returnCF
 
     -- Resume AutoKill
     if wasEnabled then
@@ -162,3 +156,4 @@ end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
+print("updatez")

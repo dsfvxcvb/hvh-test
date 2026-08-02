@@ -52,6 +52,100 @@ local function IsStillKOd(player)
     return ko and ko.Value and (not dead or not dead.Value)
 end
 
+local function RunStomp(target)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+
+    local tc = target.Character
+    if not tc then return end
+
+    local returnCF = hrp.CFrame
+    local returnVel = hrp.AssemblyLinearVelocity
+
+    -- Pause AutoKill
+    local wasEnabled = AutoKill.Enabled
+    AutoKill.Enabled = false
+    AutoKill.StopCycle()
+    if getgenv().AutoStompState then
+        getgenv().AutoStompState.autostomp = false
+    end
+
+    -- Use EXACT same spoof as AutoKill teleport:
+    -- anchor setback at real pos, swap cam subject to it, teleport for 1 frame, snap back
+    local cam = workspace.CurrentCamera
+    local setback = getgenv().AutoKillSetback
+    local useSpoof = getgenv().AutoKillSpoof and setback
+
+    local timeout = tick() + 8
+    while tick() < timeout and IsStillKOd(target) do
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then break end
+        local ut = tc:FindFirstChild("UpperTorso") or tc:FindFirstChild("HumanoidRootPart")
+        if not ut then break end
+
+        hum.Sit = false
+        hum.PlatformStand = false
+
+        local stompCF = CFrame.new(ut.Position + Vector3.new(0, 3.5, 0))
+        local originalVel = hrp.AssemblyLinearVelocity
+
+        if useSpoof then
+            -- anchor setback at our real position so camera stays there
+            local originalSubject = cam.CameraSubject
+            setback.CFrame = CFrame.new(returnCF.Position)
+            cam.CameraSubject = setback
+            -- teleport
+            hrp.CFrame = stompCF
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+            RunService.RenderStepped:Wait()
+            -- fire stomp
+            for _ = 1, 5 do
+                task.spawn(function()
+                    if getgenv().MainEvent then
+                        getgenv().MainEvent:FireServer("Stomp")
+                    end
+                end)
+            end
+            -- snap back before camera subject is restored
+            hrp.CFrame = returnCF
+            hrp.AssemblyLinearVelocity = originalVel
+            cam.CameraSubject = originalSubject
+        else
+            hrp.CFrame = stompCF
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            RunService.RenderStepped:Wait()
+            for _ = 1, 5 do
+                task.spawn(function()
+                    if getgenv().MainEvent then
+                        getgenv().MainEvent:FireServer("Stomp")
+                    end
+                end)
+            end
+            hrp.CFrame = returnCF
+            hrp.AssemblyLinearVelocity = originalVel
+        end
+    end
+
+    -- ensure back at real pos
+    pcall(function()
+        hrp.CFrame = returnCF
+        hrp.AssemblyLinearVelocity = returnVel
+    end)
+
+    local success = not IsStillKOd(target)
+    print(string.format("[HVH] Stomp on %s: %s", target.Name, success and "✅" or "❌ timed out"))
+
+    if wasEnabled then
+        AutoKill.Enabled = true
+        if AutoKill.Target or AutoKill.HasSelectedTargets() then
+            AutoKill.StartCycle()
+        end
+    end
+end
+
 RunService.Heartbeat:Connect(function()
     if not HVH.Enabled or HVH.Stomping then return end
     if not AutoKill.Enabled then return end
@@ -81,31 +175,12 @@ RunService.Heartbeat:Connect(function()
     print(string.format("[HVH] HP dropped to %d%%, stomping %s", math.floor(pct), target.Name))
 
     task.spawn(function()
-        local state = getgenv().AutoStompState
-        local Targeting = getgenv().Targeting
-
-        if state and Targeting and not state.running then
-            local originalTarget = Targeting.Target
-            Targeting.Target = target
-            state.autostomp = true
-            getgenv().AutoStompLoop()
-            local timeout = tick() + 8
-            while state.running and tick() < timeout do
-                if not IsStillKOd(target) then
-                    state.autostomp = false
-                end
-                task.wait(0.05)
-            end
-            state.autostomp = false
-            Targeting.Target = originalTarget
-        end
-
+        RunStomp(target)
         HVH.Stomping = false
         HVH.LastHealth = nil
-        print(string.format("[HVH] Stomp on %s: %s", target.Name, not IsStillKOd(target) and "✅" or "❌ timed out"))
     end)
 end)
 
 print("[HVH] Loaded - triggers on every health drop below 75%, stomps immediately")
 print("niccer")
-print("hvhvhvhvhv7 not update")
+print("yeah bro last try")
